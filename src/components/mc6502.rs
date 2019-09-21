@@ -2,6 +2,7 @@ use super::address_spaces::AddressSpaces;
 use super::Clockable;
 
 #[derive(Debug)]
+#[allow(non_snake_case)]
 pub struct CPU6502 {
     address_spaces: AddressSpaces,
     PC: u16,
@@ -109,8 +110,8 @@ impl CPU6502 {
     }
 
     fn imm(&mut self) -> () {
-        self.PC += 1;
         self.addr = self.PC;
+        self.PC += 1;
         self.cycles += 2;
     }
 
@@ -735,7 +736,6 @@ impl CPU6502 {
     }
 
     fn read(&mut self, address: u16) -> u8 {
-        println!("READ ADDR::: {:X}", address);
         return self.address_spaces.read(address);
     }
 
@@ -2123,8 +2123,6 @@ impl Clockable for CPU6502 {
         let start_cycles = self.cycles;
         self.opcode = self.read(self.PC);
         self.PC += 1;
-        println!("::::::::: {:X}", self.opcode);
-
         self.exec_op(self.opcode);
         return self.cycles - start_cycles;
     }
@@ -2136,8 +2134,8 @@ mod tests {
     use super::*;
 
     fn build_base_map() -> std::vec::Vec<address_spaces::AddressMap> {
-        let mut rom = Box::new(rom::Rom::init_with_size(0xffff - 0xff00));
-        let mut ram = Box::new(ram::Ram::init_with_size(100));
+        let rom = Box::new(rom::Rom::init_with_size(0xffff - 0xff00));
+        let ram = Box::new(ram::Ram::init_with_size(100));
 
         let the_mapping = vec![
             address_spaces::AddressMap {
@@ -2185,7 +2183,7 @@ mod tests {
     }
 
     #[test]
-    fn read_steps() {
+    fn read_only_steps() {
         let mut the_mapping = build_base_map();
         let mut rom_data = vec![0x00; 2 + 0xFF];
         rom_data[2 + 0xfd] = 0xFF;
@@ -2198,15 +2196,6 @@ mod tests {
 
         let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
 
-        println!("{:?}", cpu);
-
-        // 1  0000 ????
-        // 2  0000 ????						; TEST ADDRESSING MODES
-        // 3  0000 ????						; $FFFC and $FFFD - RESET PROGRAM COUNTER
-        // 4  0000 ????
-        // 5  0000 ????				      processor	6502
-        // 6  ff00					      org	$FF00
-        // 7  ff00
         // 8  ff00				   loop
         // 9  ff00		       ea		      nop
         // 10  ff01		       ea		      nop
@@ -2218,25 +2207,86 @@ mod tests {
         assert_eq!(0xFF00, cpu.PC);
         assert_eq!(0, cpu.cycles);
 
-        let step_res = cpu.step(); // nop
+        // 9  ff00		       ea		      nop
+        let step_res = cpu.step();
         assert_eq!(0xFF01, cpu.PC);
         assert_eq!(2, cpu.cycles);
         assert_eq!(2, step_res);
 
-        let step_res = cpu.step(); // nop
+        // 10  ff01		       ea		      nop
+        let step_res = cpu.step();
         assert_eq!(0xFF02, cpu.PC);
         assert_eq!(4, cpu.cycles);
         assert_eq!(2, step_res);
 
-        let step_res = cpu.step(); // nop
+        // 12  ff02		       ea		      nop
+        let step_res = cpu.step();
         assert_eq!(0xFF03, cpu.PC);
         assert_eq!(6, cpu.cycles);
         assert_eq!(2, step_res);
 
-        let step_res = cpu.step(); // jmp
+        // 13  ff03		       4c 02 ff 	      jmp	loop2
+        let step_res = cpu.step();
         assert_eq!(0xFF02, cpu.PC);
         assert_eq!(9, cpu.cycles);
         assert_eq!(3, step_res);
+    }
+
+    #[test]
+    fn write_steps() {
+        let mut the_mapping = build_base_map();
+        let mut rom_data = vec![0x00; 2 + 0xFF];
+        rom_data[2 + 0xfd] = 0xFF;
+        rom_data[2 + 0xfc] = 0x00;
+        the_mapping[1].component.flash(&rom_data);
+
+        the_mapping[1].component.flash(&vec![
+            0x00, 0xFF, 0xA9, 0xAA, 0x85, 0x00, 0xA9, 0xBB, 0x85, 0x01, 0xEA, 0x4C, 0x00, 0xFF,
+        ]);
+
+        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
+
+        //   9  ff00				   loop
+        //  10  ff00		       a9 aa		      lda	#$AA
+        //  11  ff02		       85 00		      sta	$0000
+        //  12  ff04		       a9 bb		      lda	#$BB
+        //  13  ff06		       85 01		      sta	$0001
+        //  14  ff08		       ea		      nop
+        //  15  ff09		       4c 00 ff 	      jmp	loop
+
+        cpu.reset();
+
+        assert_eq!(0xFF00, cpu.PC);
+        assert_eq!(0, cpu.cycles);
+        let step_res = cpu.step();
+
+        //  10  ff00		       a9 aa		      lda	#$AA
+        assert_eq!(0xFF02, cpu.PC);
+        assert_eq!(0xAA, cpu.A);
+        assert_eq!(2, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        //  11  ff02		       85 00		      sta	$0000
+        let step_res = cpu.step();
+        assert_eq!(0xFF04, cpu.PC);
+        assert_eq!(5, cpu.cycles);
+        assert_eq!(3, step_res);
+        assert_eq!(0xAA, cpu.read(0x000));
+
+        //  12  ff04		       a9 bb		      lda	#$BB
+        let step_res = cpu.step();
+        assert_eq!(0xFF06, cpu.PC);
+        assert_eq!(0xBB, cpu.A);
+        assert_eq!(7, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        //  13  ff06		       85 01		      sta	$0001
+        let step_res = cpu.step();
+        assert_eq!(0xFF08, cpu.PC);
+        assert_eq!(10, cpu.cycles);
+        assert_eq!(3, step_res);
+        assert_eq!(0xAA, cpu.read(0x000));
+        assert_eq!(0xBB, cpu.read(0x001));
     }
 
 }
