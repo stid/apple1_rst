@@ -9,7 +9,7 @@ pub struct Rom {
 impl Rom {
     pub fn init_with_size(size: usize) -> Rom {
         Rom {
-            data: vec![0xFF; size],
+            data: vec![0x00; size],
             read_ops: 0,
         }
     }
@@ -41,10 +41,10 @@ mod tests {
     #[test]
     fn initial_state() {
         let mut rom = Rom::init_with_size(4);
-        assert_eq!(0xFF, rom.read(0));
-        assert_eq!(0xFF, rom.read(1));
-        assert_eq!(0xFF, rom.read(2));
-        assert_eq!(0xFF, rom.read(3));
+        assert_eq!(0x00, rom.read(0));
+        assert_eq!(0x00, rom.read(1));
+        assert_eq!(0x00, rom.read(2));
+        assert_eq!(0x00, rom.read(3));
     }
 
     #[test]
@@ -61,7 +61,7 @@ mod tests {
     fn should_not_write() {
         let mut rom = Rom::init_with_size(4);
         rom.write(0, 5);
-        assert_eq!(0xFF, rom.read(0));
+        assert_eq!(0x00, rom.read(0));
     }
 
     #[test]

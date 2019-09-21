@@ -1,11 +1,13 @@
 use super::IoAddressable;
 
+#[derive(Debug)]
 pub struct AddressMap {
     pub addr: [u16; 2],
     pub component: Box<dyn IoAddressable>,
     pub name: String,
 }
 
+#[derive(Debug)]
 pub struct AddressSpaces {
     address_maps: Vec<AddressMap>,
 }
@@ -33,7 +35,8 @@ impl AddressSpaces {
             None => 0,
             Some(addr_mapping) => {
                 let res = &mut addr_mapping.component;
-                return res.read((address - addr_mapping.addr[0]) as usize);
+                let relative_addr = address - addr_mapping.addr[0];
+                return res.read(relative_addr as usize);
             }
         }
     }
@@ -57,14 +60,15 @@ impl AddressSpaces {
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
     struct TestAddressable {}
 
     impl IoAddressable for TestAddressable {
-        fn read(&mut self, address: usize) -> u8 {
+        fn read(&mut self, _address: usize) -> u8 {
             b'a'
         }
-        fn write(&mut self, address: usize, value: u8) -> () {}
-        fn flash(&mut self, data: &Vec<u8>) -> () {}
+        fn write(&mut self, _address: usize, _value: u8) -> () {}
+        fn flash(&mut self, _data: &Vec<u8>) -> () {}
     }
 
     #[test]

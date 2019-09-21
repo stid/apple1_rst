@@ -1,5 +1,7 @@
 use super::address_spaces::AddressSpaces;
+use super::Clockable;
 
+#[derive(Debug)]
 pub struct CPU6502 {
     address_spaces: AddressSpaces,
     PC: u16,
@@ -58,17 +60,17 @@ impl CPU6502 {
     ////////////////////////////////////////////////////////////////////////////////
 
     fn izx(&mut self) {
+        let a: u16 = (self.read16(self.PC).wrapping_add(self.X as u16)) & 0xFF;
         self.PC += 1;
-        let a: u16 = (self.read16(self.PC) + self.X as u16) & 0xFF;
-        self.addr = (self.read16(a + 1) << 8) | self.read16(a);
+        self.addr = (self.read16(a.wrapping_add(1)) << 8) | self.read16(a);
         self.cycles += 6;
     }
 
     fn izy(&mut self) {
-        self.PC += 1;
         let a: u16 = self.read16(self.PC);
-        let paddr: u16 = (self.read16((a + 1) & 0xFF) << 8) | self.read16(a);
-        self.addr = paddr + self.Y as u16;
+        self.PC += 1;
+        let paddr: u16 = (self.read16((a.wrapping_add(1)) & 0xFF) << 8) | self.read16(a);
+        self.addr = paddr.wrapping_add(self.Y as u16);
         if (paddr & 0x100) != (self.addr & 0x100) {
             self.cycles += 6;
         } else {
@@ -78,27 +80,27 @@ impl CPU6502 {
 
     fn ind(&mut self) -> () {
         let mut a = self.read16(self.PC);
-        a |= (self.read16((self.PC & 0xff00) | ((self.PC + 1) & 0xff))) << 8;
+        a |= (self.read16((self.PC & 0xff00) | ((self.PC.wrapping_add(1)) & 0xff))) << 8;
         self.addr = self.read16(a);
-        self.addr |= (self.read16(a + 1)) << 8;
+        self.addr |= (self.read16(a.wrapping_add(1))) << 8;
         self.cycles += 5;
     }
 
     fn zp(&mut self) -> () {
-        self.PC += 1;
         self.addr = self.read16(self.PC);
+        self.PC += 1;
         self.cycles += 3;
     }
 
     fn zpx(&mut self) -> () {
-        self.PC += 1;
         self.addr = (self.read16(self.PC) + self.X as u16) & 0xff;
+        self.PC += 1;
         self.cycles += 4;
     }
 
     fn zpy(&mut self) -> () {
-        self.PC += 1;
         self.addr = (self.read16(self.PC) + self.Y as u16) & 0xff;
+        self.PC += 1;
         self.cycles += 4;
     }
 
@@ -113,18 +115,18 @@ impl CPU6502 {
     }
 
     fn abs(&mut self) -> () {
-        self.PC += 1;
         self.addr = self.read16(self.PC);
         self.PC += 1;
         self.addr |= (self.read16(self.PC)) << 8;
+        self.PC += 1;
         self.cycles += 4;
     }
 
     fn abx(&mut self) -> () {
-        self.PC += 1;
         let mut paddr = self.read16(self.PC);
         self.PC += 1;
         paddr |= (self.read16(self.PC)) << 8;
+        self.PC += 1;
         self.addr = paddr + (self.X as u16);
         if (paddr & 0x100) != (self.addr & 0x100) {
             self.cycles += 5;
@@ -134,10 +136,10 @@ impl CPU6502 {
     }
 
     fn aby(&mut self) -> () {
-        self.PC += 1;
         let mut paddr = self.read16(self.PC);
         self.PC += 1;
         paddr |= (self.read16(self.PC)) << 8;
+        self.PC += 1;
         self.addr = paddr + (self.Y as u16);
         if (paddr & 0x100) != (self.addr & 0x100) {
             self.cycles += 5;
@@ -147,8 +149,8 @@ impl CPU6502 {
     }
 
     fn rel(&mut self) -> () {
-        self.PC += 1;
         self.addr = self.read16(self.PC);
+        self.PC += 1;
         if self.addr & 0x80 != 0 {
             self.addr -= 0x100;
         }
@@ -201,18 +203,21 @@ impl CPU6502 {
     fn adc(&mut self) -> () {
         let v = self.read(self.addr);
         let c = if self.C { 1 } else { 0 };
-        let r = self.A + v + c;
+        let r = self.A.wrapping_add(v).wrapping_add(c);
         if self.D {
-            let mut al = (self.A & 0x0F) + (v & 0x0F) + c;
+            let mut al = (self.A & 0x0F).wrapping_add(v & 0x0F).wrapping_add(c);
             if al > 9 {
-                al += 6
+                al = al.wrapping_add(6);
             };
-            let mut ah = (self.A >> 4) + (v >> 4) + (if al > 15 { 1 } else { 0 });
+            let mut ah =
+                (self.A >> 4)
+                    .wrapping_add(v >> 4)
+                    .wrapping_add(if al > 15 { 1 } else { 0 });
             self.Z = (r & 0xFF) == 0;
             self.N = (ah & 8) != 0;
             self.V = (!(self.A ^ v) & (self.A ^ (ah << 4)) & 0x80) != 0;
             if ah > 9 {
-                ah += 6
+                ah = ah.wrapping_add(6);
             };
             self.C = ah > 15;
             self.A = ((ah << 4) | (al & 15)) & 0xFF;
@@ -226,7 +231,7 @@ impl CPU6502 {
     }
 
     fn ahx(&mut self) -> () {
-        self.tmp = ((self.addr >> 8) + 1) & self.A as u16 & self.X as u16;
+        self.tmp = ((self.addr >> 8).wrapping_add(1)) & self.A as u16 & self.X as u16;
         self.write(self.addr, self.tmp as u8);
     }
 
@@ -262,11 +267,11 @@ impl CPU6502 {
         if self.D {
             let mut al = (self.tmp & 0x0F) + (self.tmp & 1);
             if al > 5 {
-                al += 6
+                al = al.wrapping_add(6);
             };
             let ah = ((self.tmp >> 4) & 0x0F) + ((self.tmp >> 4) & 1);
             if ah > 5 {
-                al += 6;
+                al = al.wrapping_add(6);
                 self.C = true;
             } else {
                 self.C = false;
@@ -298,9 +303,9 @@ impl CPU6502 {
     fn brk(&mut self) -> () {
         self.PC += 1;
         self.write(self.S as u16 + 0x100, (self.PC >> 8) as u8);
-        self.S = (self.S - 1) & 0xFF;
+        self.S = self.S.wrapping_sub(1);
         self.write(self.S as u16 + 0x100, self.PC as u8);
-        self.S = (self.S - 1) & 0xFF;
+        self.S = self.S.wrapping_sub(1);
         let mut v = if self.N { 1 << 7 } else { 0 };
         v |= if self.V { 1 << 6 } else { 0 };
         v |= 3 << 4;
@@ -309,7 +314,7 @@ impl CPU6502 {
         v |= if self.Z { 1 << 1 } else { 0 };
         v |= if self.C { 1 } else { 0 };
         self.write(self.S as u16 + 0x100, v);
-        self.S = (self.S - 1) & 0xFF;
+        self.S = self.S.wrapping_sub(1);
         self.I = true;
         self.D = false;
         self.PC = (self.read16(0xFFFF) << 8) | self.read16(0xFFFE);
@@ -355,38 +360,38 @@ impl CPU6502 {
     }
 
     fn cmp(&mut self) {
-        self.tmp = self.A as u16 - self.read16(self.addr);
+        self.tmp = self.A.wrapping_sub(self.read(self.addr)) as u16;
         self.fnzb(self.tmp);
     }
 
     fn cpx(&mut self) {
-        self.tmp = self.X as u16 - self.read16(self.addr);
+        self.tmp = self.X.wrapping_sub(self.read(self.addr)) as u16;
         self.fnzb(self.tmp);
     }
 
     fn cpy(&mut self) {
-        self.tmp = self.Y as u16 - self.read16(self.addr);
+        self.tmp = self.Y.wrapping_sub(self.read(self.addr)) as u16;
         self.fnzb(self.tmp);
     }
 
     fn dcp(&mut self) {
-        self.tmp = (self.read16(self.addr) - 1) & 0xFF;
-        self.tmp = self.A as u16 - self.tmp;
+        self.tmp = (self.read(self.addr).wrapping_sub(1)) as u16 & 0xFF;
+        self.tmp = (self.A as u16).wrapping_sub(self.tmp);
         self.fnzb(self.tmp);
     }
 
     fn dec(&mut self) {
-        self.tmp = (self.read16(self.addr) - 1) & 0xFF;
+        self.tmp = (self.read(self.addr).wrapping_sub(1)) as u16 & 0xFF;
         self.fnz(self.tmp);
     }
 
     fn dex(&mut self) {
-        self.X = (self.X - 1) & 0xFF;
+        self.X = self.X.wrapping_sub(1);
         self.fnz(self.X as u16);
     }
 
     fn dey(&mut self) {
-        self.Y = (self.Y as u16 - 1) as u8;
+        self.Y = self.Y.wrapping_sub(1);
         self.fnz(self.Y as u16);
     }
 
@@ -396,17 +401,17 @@ impl CPU6502 {
     }
 
     fn inc(&mut self) {
-        self.tmp = (self.read16(self.addr) + 1) & 0xFF;
+        self.tmp = (self.read16(self.addr).wrapping_add(1)) & 0xFF;
         self.fnz(self.tmp);
     }
 
     fn inx(&mut self) {
-        self.X = (self.X as u16 + 1) as u8;
+        self.X = self.X.wrapping_add(1);
         self.fnz(self.X as u16);
     }
 
     fn iny(&mut self) {
-        self.Y = (self.Y as u16 + 1) as u8;
+        self.Y = self.Y.wrapping_add(1);
         self.fnz(self.Y as u16);
     }
 
@@ -525,11 +530,11 @@ impl CPU6502 {
         self.A = self.tmp as u8;
     }
 
-    fn nop(&self) {}
+    fn nop(&mut self) {}
 
     fn pha(&mut self) {
         self.write(self.S as u16 + 0x100, self.A);
-        self.S = (self.S as u16 - 1) as u8;
+        self.S = self.S.wrapping_sub(1);
         self.cycles += 1;
     }
 
@@ -542,19 +547,19 @@ impl CPU6502 {
         v |= if self.Z { 1 << 1 } else { 0 };
         v |= if self.C { 1 } else { 0 };
         self.write(self.S as u16 + 0x100, v);
-        self.S = (self.S as u16 - 1) as u8;
+        self.S = self.S.wrapping_sub(1);;
         self.cycles += 1;
     }
 
     fn pla(&mut self) {
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.A = self.read(self.S as u16 + 0x100);
         self.fnz(self.A as u16);
         self.cycles += 2;
     }
 
     fn plp(&mut self) {
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);;
         self.tmp = self.read16(self.S as u16 + 0x100);
         self.N = (self.tmp & 0x80) != 0;
         self.V = (self.tmp & 0x40) != 0;
@@ -566,7 +571,7 @@ impl CPU6502 {
     }
 
     fn rti(&mut self) {
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.tmp = self.read16(self.S as u16 + 0x100);
         self.N = (self.tmp & 0x80) != 0;
         self.V = (self.tmp & 0x40) != 0;
@@ -574,17 +579,17 @@ impl CPU6502 {
         self.I = (self.tmp & 0x04) != 0;
         self.Z = (self.tmp & 0x02) != 0;
         self.C = (self.tmp & 0x01) != 0;
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.PC = self.read16(self.S as u16 + 0x100);
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.PC |= self.read16(self.S as u16 + 0x100) << 8;
         self.cycles += 4;
     }
 
     fn rts(&mut self) {
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.PC = self.read16(self.S as u16 + 0x100);
-        self.S = (self.S as u16 + 1) as u8;
+        self.S = self.S.wrapping_add(1);
         self.PC |= self.read16(self.S as u16 + 0x100) << 8;
         self.PC += 1;
         self.cycles += 4;
@@ -597,7 +602,7 @@ impl CPU6502 {
     fn sbc(&mut self) {
         let v: u16 = self.read16(self.addr);
         let c: u16 = 1 - (if self.C { 1 } else { 0 });
-        let r: u16 = self.A as u16 - v - c;
+        let r: u16 = (self.A as u16).wrapping_sub(v).wrapping_sub(c);
         if self.D {
             let mut al = (self.A as u16 & 0x0F) - (v & 0x0F) - c;
             if al > 0x80 {
@@ -622,7 +627,9 @@ impl CPU6502 {
     }
 
     fn sbx(&mut self) {
-        self.tmp = self.read16(self.addr) - (self.A & self.X) as u16;
+        self.tmp = self
+            .read16(self.addr)
+            .wrapping_sub((self.A & self.X) as u16);
         self.fnzb(self.tmp);
         self.X = self.tmp as u8;
     }
@@ -728,6 +735,7 @@ impl CPU6502 {
     }
 
     fn read(&mut self, address: u16) -> u8 {
+        println!("READ ADDR::: {:X}", address);
         return self.address_spaces.read(address);
     }
 
@@ -737,20 +745,6 @@ impl CPU6502 {
 
     fn write(&mut self, address: u16, value: u8) -> () {
         self.address_spaces.write(address, value);
-    }
-
-    pub fn get_cycles(&self) -> usize {
-        return self.cycles;
-    }
-
-    pub fn step(&mut self) -> usize {
-        let startCycles = self.cycles;
-        self.PC += 1;
-
-        self.opcode = self.read(self.PC);
-
-        self.exec_op(self.opcode);
-        return self.cycles - startCycles;
     }
 
     pub fn exec_op(&mut self, opcode: u8) {
@@ -2118,4 +2112,131 @@ impl CPU6502 {
             }
         }
     }
+}
+
+impl Clockable for CPU6502 {
+    fn get_cycles(&self) -> usize {
+        return self.cycles;
+    }
+
+    fn step(&mut self) -> usize {
+        let start_cycles = self.cycles;
+        self.opcode = self.read(self.PC);
+        self.PC += 1;
+        println!("::::::::: {:X}", self.opcode);
+
+        self.exec_op(self.opcode);
+        return self.cycles - start_cycles;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+    use super::*;
+
+    fn build_base_map() -> std::vec::Vec<address_spaces::AddressMap> {
+        let mut rom = Box::new(rom::Rom::init_with_size(0xffff - 0xff00));
+        let mut ram = Box::new(ram::Ram::init_with_size(100));
+
+        let the_mapping = vec![
+            address_spaces::AddressMap {
+                addr: [0, 100],
+                component: ram,
+                name: String::from("RAM"),
+            },
+            address_spaces::AddressMap {
+                addr: [0xff00, 0xffff],
+                component: rom,
+                name: String::from("ROM"),
+            },
+        ];
+
+        the_mapping
+    }
+
+    #[test]
+    fn initial_state() {
+        let the_mapping = build_base_map();
+        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
+        assert_eq!(0x0, cpu.get_cycles());
+        let cycles = cpu.step(); // BRK
+        assert_eq!(7, cycles);
+        assert_eq!(0x0000, cpu.PC);
+    }
+
+    #[test]
+    fn should_reset() {
+        let mut the_mapping = build_base_map();
+        let mut rom_data = vec![0x00; 2 + 0xFF];
+        rom_data[2 + 0xfd] = 0x0A;
+        rom_data[2 + 0xfc] = 0x0B;
+        the_mapping[1].component.flash(&rom_data);
+
+        //the_mapping[1]
+        //    .component
+        //    .flash(&vec![0x00, 0xFF, 0xEA, 0xEA, 0xEA, 0x4C, 02, 0xFF]);
+
+        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
+
+        cpu.reset();
+
+        assert_eq!(0x0A0B, cpu.PC);
+    }
+
+    #[test]
+    fn read_steps() {
+        let mut the_mapping = build_base_map();
+        let mut rom_data = vec![0x00; 2 + 0xFF];
+        rom_data[2 + 0xfd] = 0xFF;
+        rom_data[2 + 0xfc] = 0x00;
+        the_mapping[1].component.flash(&rom_data);
+
+        the_mapping[1]
+            .component
+            .flash(&vec![0x00, 0xFF, 0xEA, 0xEA, 0xEA, 0x4C, 02, 0xFF]);
+
+        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
+
+        println!("{:?}", cpu);
+
+        // 1  0000 ????
+        // 2  0000 ????						; TEST ADDRESSING MODES
+        // 3  0000 ????						; $FFFC and $FFFD - RESET PROGRAM COUNTER
+        // 4  0000 ????
+        // 5  0000 ????				      processor	6502
+        // 6  ff00					      org	$FF00
+        // 7  ff00
+        // 8  ff00				   loop
+        // 9  ff00		       ea		      nop
+        // 10  ff01		       ea		      nop
+        // 11  ff02				   loop2
+        // 12  ff02		       ea		      nop
+        // 13  ff03		       4c 02 ff 	      jmp	loop2
+
+        cpu.reset();
+        assert_eq!(0xFF00, cpu.PC);
+        assert_eq!(0, cpu.cycles);
+
+        let step_res = cpu.step(); // nop
+        assert_eq!(0xFF01, cpu.PC);
+        assert_eq!(2, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        let step_res = cpu.step(); // nop
+        assert_eq!(0xFF02, cpu.PC);
+        assert_eq!(4, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        let step_res = cpu.step(); // nop
+        assert_eq!(0xFF03, cpu.PC);
+        assert_eq!(6, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        let step_res = cpu.step(); // jmp
+        assert_eq!(0xFF02, cpu.PC);
+        assert_eq!(9, cpu.cycles);
+        assert_eq!(3, step_res);
+    }
+
 }
