@@ -3,4 +3,14 @@
 [[package]]
 name = "apple1_rst"
 version = "0.1.0"
+dependencies = [
+ "fake_clock 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
+[[package]]
+name = "fake_clock"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[metadata]
+"checksum fake_clock 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a121cefff0e603c3a3477370e0fc965059d848bdab6b56554c1aa2b5b75bb320"

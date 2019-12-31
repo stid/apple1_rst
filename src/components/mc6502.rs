@@ -2288,5 +2288,103 @@ mod tests {
         assert_eq!(0xAA, cpu.read(0x000));
         assert_eq!(0xBB, cpu.read(0x001));
     }
+    fn read_steps() {
+        let mut the_mapping = build_base_map();
+        let mut rom_data = vec![0x00; 2 + 0xFF];
+        rom_data[2 + 0xfd] = 0xFF;
+        rom_data[2 + 0xfc] = 0x00;
+        the_mapping[1].component.flash(&rom_data);
+
+        the_mapping[1].component.flash(&vec![
+            0x00,
+            0x00,
+            0xad,
+            0x13,
+            0xff,
+            0x85,
+            0x0a,
+            0xad,
+            0x14,
+            0xff,
+            0x85,
+            0x0b,
+            0xa9,
+            0xcc,
+            0xa2,
+            0x01,
+            0x95,
+            0x0b,
+            0x4c,
+            0x00,
+            0xff,
+            0xaa,
+            0xbb,
+        ]);
+
+        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
+
+        /*
+            * = $ff00 "Main"
+            start:
+                lda mem
+                sta 10
+                lda mem+1
+                sta 11
+                lda #$CC
+                ldx #1
+                sta 11, x
+                jmp start
+            mem:
+            .byte $AA, $BB
+        */
+
+        cpu.reset();
+
+        assert_eq!(0xFF00, cpu.PC);
+        assert_eq!(0, cpu.cycles);
+
+        // lda mem
+        let step_res = cpu.step();
+        assert_eq!(0xff03, cpu.PC);
+        assert_eq!(0xAA, cpu.A);
+        assert_eq!(4, cpu.cycles);
+        assert_eq!(4, step_res);
+
+        // sta 10
+        let step_res = cpu.step();
+        assert_eq!(0xff05, cpu.PC);
+        assert_eq!(0xAA, cpu.read(10));
+        assert_eq!(7, cpu.cycles);
+        assert_eq!(3, step_res);
+
+        // lda mem+1
+        let step_res = cpu.step();
+        assert_eq!(0xff08, cpu.PC);
+        assert_eq!(0xBB, cpu.read(11));
+        assert_eq!(11, cpu.cycles);
+        assert_eq!(4, step_res);
+
+        // sta 11
+        let step_res = cpu.step();
+        assert_eq!(0xff0a, cpu.PC);
+        assert_eq!(0xBB, cpu.read(11));
+        assert_eq!(14, cpu.cycles);
+        assert_eq!(2, step_res);
+
+        // ldx #1
+        let step_res = cpu.step();
+        assert_eq!(0xff0e, cpu.PC);
+        assert_eq!(0x01, cpu.X);
+
+        // sta 11, x
+        let step_res = cpu.step();
+        assert_eq!(0xCC, cpu.read(12));
+
+        // jmp start
+        let step_res = cpu.step();
+        assert_eq!(0xff00, cpu.PC);
+
+    }
+
 
 }
