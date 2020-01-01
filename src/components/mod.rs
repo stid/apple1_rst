@@ -1,7 +1,7 @@
-pub mod PIA6820;
 pub mod address_spaces;
 pub mod clock;
 pub mod mc6502;
+pub mod pia6820;
 pub mod ram;
 pub mod rom;
 use std::fmt::Debug;
@@ -25,6 +25,6 @@ pub trait IoComponent: Debug {
 }
 
 struct IoComponentWireOptions {
-    logicWrite: fn(value: u8) -> thread::Result<()>,
-    logicRead: fn(address: usize) -> thread::Result<u8>,
+    logic_write: fn(value: u8) -> thread::Result<()>,
+    logic_read: fn(address: usize) -> thread::Result<u8>,
 }
