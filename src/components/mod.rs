@@ -19,15 +19,12 @@ pub trait Clockable: Debug {
 }
 
 pub trait IoComponent: Debug {
-    fn read(address: usize) -> thread::Result<u8>;
-    fn write(value: u8) -> thread::Result<()>;
-    fn wire(options: IoComponentWireOptions) -> ();
+    fn read(&mut self, address: usize) -> thread::Result<u8>;
+    fn write(&mut self, value: u8) -> thread::Result<()>;
+    fn wire(&mut self, options: IoComponentWireOptions) -> ();
 }
-
 
 struct IoComponentWireOptions {
-    logicWrite: fn (value: number)  -> thread::Result<()>,
-    logicRead: fn (address: number)  -> thread::Result<(u8)>
+    logicWrite: fn(value: u8) -> thread::Result<()>,
+    logicRead: fn(address: usize) -> thread::Result<u8>,
 }
-
-

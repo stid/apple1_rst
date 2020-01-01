@@ -548,7 +548,7 @@ impl CPU6502 {
         v |= if self.Z { 1 << 1 } else { 0 };
         v |= if self.C { 1 } else { 0 };
         self.write(self.S as u16 + 0x100, v);
-        self.S = self.S.wrapping_sub(1);;
+        self.S = self.S.wrapping_sub(1);
         self.cycles += 1;
     }
 
@@ -560,7 +560,7 @@ impl CPU6502 {
     }
 
     fn plp(&mut self) {
-        self.S = self.S.wrapping_add(1);;
+        self.S = self.S.wrapping_add(1);
         self.tmp = self.read16(self.S as u16 + 0x100);
         self.N = (self.tmp & 0x80) != 0;
         self.V = (self.tmp & 0x40) != 0;
@@ -2241,84 +2241,8 @@ mod tests {
         the_mapping[1].component.flash(&rom_data);
 
         the_mapping[1].component.flash(&vec![
-            0x00, 0xFF, 0xA9, 0xAA, 0x85, 0x00, 0xA9, 0xBB, 0x85, 0x01, 0xEA, 0x4C, 0x00, 0xFF,
-        ]);
-
-        let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
-
-        //   9  ff00				   loop
-        //  10  ff00		       a9 aa		      lda	#$AA
-        //  11  ff02		       85 00		      sta	$0000
-        //  12  ff04		       a9 bb		      lda	#$BB
-        //  13  ff06		       85 01		      sta	$0001
-        //  14  ff08		       ea		      nop
-        //  15  ff09		       4c 00 ff 	      jmp	loop
-
-        cpu.reset();
-
-        assert_eq!(0xFF00, cpu.PC);
-        assert_eq!(0, cpu.cycles);
-        let step_res = cpu.step();
-
-        //  10  ff00		       a9 aa		      lda	#$AA
-        assert_eq!(0xFF02, cpu.PC);
-        assert_eq!(0xAA, cpu.A);
-        assert_eq!(2, cpu.cycles);
-        assert_eq!(2, step_res);
-
-        //  11  ff02		       85 00		      sta	$0000
-        let step_res = cpu.step();
-        assert_eq!(0xFF04, cpu.PC);
-        assert_eq!(5, cpu.cycles);
-        assert_eq!(3, step_res);
-        assert_eq!(0xAA, cpu.read(0x000));
-
-        //  12  ff04		       a9 bb		      lda	#$BB
-        let step_res = cpu.step();
-        assert_eq!(0xFF06, cpu.PC);
-        assert_eq!(0xBB, cpu.A);
-        assert_eq!(7, cpu.cycles);
-        assert_eq!(2, step_res);
-
-        //  13  ff06		       85 01		      sta	$0001
-        let step_res = cpu.step();
-        assert_eq!(0xFF08, cpu.PC);
-        assert_eq!(10, cpu.cycles);
-        assert_eq!(3, step_res);
-        assert_eq!(0xAA, cpu.read(0x000));
-        assert_eq!(0xBB, cpu.read(0x001));
-    }
-    fn read_steps() {
-        let mut the_mapping = build_base_map();
-        let mut rom_data = vec![0x00; 2 + 0xFF];
-        rom_data[2 + 0xfd] = 0xFF;
-        rom_data[2 + 0xfc] = 0x00;
-        the_mapping[1].component.flash(&rom_data);
-
-        the_mapping[1].component.flash(&vec![
-            0x00,
-            0x00,
-            0xad,
-            0x13,
-            0xff,
-            0x85,
-            0x0a,
-            0xad,
-            0x14,
-            0xff,
-            0x85,
-            0x0b,
-            0xa9,
-            0xcc,
-            0xa2,
-            0x01,
-            0x95,
-            0x0b,
-            0x4c,
-            0x00,
-            0xff,
-            0xaa,
-            0xbb,
+            0x00, 0x00, 0xad, 0x13, 0xff, 0x85, 0x0a, 0xad, 0x14, 0xff, 0x85, 0x0b, 0xa9, 0xcc,
+            0xa2, 0x01, 0x95, 0x0b, 0x4c, 0x00, 0xff, 0xaa, 0xbb,
         ]);
 
         let mut cpu = CPU6502::init(address_spaces::AddressSpaces::init(the_mapping));
@@ -2360,7 +2284,7 @@ mod tests {
         // lda mem+1
         let step_res = cpu.step();
         assert_eq!(0xff08, cpu.PC);
-        assert_eq!(0xBB, cpu.read(11));
+        assert_eq!(0xBB, cpu.A);
         assert_eq!(11, cpu.cycles);
         assert_eq!(4, step_res);
 
@@ -2369,6 +2293,13 @@ mod tests {
         assert_eq!(0xff0a, cpu.PC);
         assert_eq!(0xBB, cpu.read(11));
         assert_eq!(14, cpu.cycles);
+        assert_eq!(3, step_res);
+
+        // lda #$CC
+        let step_res = cpu.step();
+        assert_eq!(0xff0c, cpu.PC);
+        assert_eq!(0xCC, cpu.A);
+        assert_eq!(16, cpu.cycles);
         assert_eq!(2, step_res);
 
         // ldx #1
@@ -2383,8 +2314,5 @@ mod tests {
         // jmp start
         let step_res = cpu.step();
         assert_eq!(0xff00, cpu.PC);
-
     }
-
-
 }
